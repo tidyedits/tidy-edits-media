@@ -1,0 +1,1 @@
+Photos: Pexels (4239146, 4239031, 4108715, 6197116, 4107120, 4239013, 4239091) and Unsplash (photo-1584622650111, photo-1556911220, photo-1581578731548), free licenses allowing commercial use. Toned to Tidy Edits neutrals. Rebuild: copy engine.js, logo_data.js, fonts/ from ../../kinetic-type/source and run the kinetic-cut-video build.py.
