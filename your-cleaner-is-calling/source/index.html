@@ -1,0 +1,167 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0}html,body{overflow:hidden;background:#000}canvas{display:block}
+@font-face{font-family:PF;font-weight:900;font-style:normal;src:url(fonts/pf-latin-900-normal.woff2)}
+@font-face{font-family:PF;font-weight:700;font-style:normal;src:url(fonts/pf-latin-700-normal.woff2)}
+@font-face{font-family:PF;font-weight:400;font-style:italic;src:url(fonts/pf-latin-400-italic.woff2)}
+@font-face{font-family:PF;font-weight:700;font-style:italic;src:url(fonts/pf-latin-700-italic.woff2)}
+@font-face{font-family:PF;font-weight:900;font-style:italic;src:url(fonts/pf-latin-900-italic.woff2)}
+</style></head><body><canvas id="out"></canvas>
+<script>window.KCONF={W:1080,H:1920,FPS:30,SAMPLES:4,
+  palette:{ink:[22,18,15],paper:[246,243,236],accent:[184,154,116],accentHi:[214,190,156],warm:[231,220,203],deep:[92,68,48],shade:[46,36,28],mute:[176,160,140],gray:[110,98,86],cool:[200,190,175]},
+  fonts:{serif:'PF',sans:'Inter',mono:'"DejaVu Sans Mono"'},
+  caBase:0, caHit:3, flash:.12, punch:.03, vignette:.3};</script>
+<script src="engine.js"></script>
+<script src="logo_data.js"></script>
+<script src="env.js"></script>
+<script>
+/* Tidy Edits — "Your cleaner is calling". A phone call told as glass UI cards + bold captions.
+   Pure function of t/u. Text safe zone y 180–1480. Voice times match audio.py. */
+const C={ink:[22,18,15],paper:[246,243,236],cream:[231,220,203],tan:[184,154,116],brown:[138,106,74],deep:[92,68,48],shade:[46,36,28],mute:[176,160,140]};
+const SN=(w,s)=>`${w} ${Math.round(s)}px Inter`, SF=(w,s,it)=>`${it?'italic ':''}${w} ${Math.round(s)}px PF`;
+const LOGO=new Image();LOGO.src=LOGO_SRC;
+const IM={},LOADS=[new Promise(r=>{LOGO.onload=r;LOGO.onerror=r})];
+for(const k of ['kitchen','bath','window']){const i=new Image();LOADS.push(new Promise(r=>{i.onload=r;i.onerror=r}));i.src='photos/'+k+'.jpg';IM[k]=i}
+const env=t=>{const k=t*30,i=Math.floor(k);return lp(VOENV[i]||0,VOENV[i+1]||0,k-i)};
+
+/* ---------- voice lines -> caption chunks (word times spread by length) ---------- */
+const LINES=[
+ [2.6,1.22,'c',"Hey, what's up?"],
+ [4.1,4.18,'t',"Hi! It's Tidy Edits. | Your unit is done, | and your guests | check in at three."],
+ [8.5,5.27,'t',"Fresh linens, | kitchen and bath | detailed, | everything restocked. | Photos are | in your texts."],
+ [14.0,1.54,'c',"Already? | Amazing."],
+ [15.8,4.03,'t',"One thing. | The oven could use | a deep clean. | Add it Friday, | or skip it?"],
+ [20.1,1.3,'c',"Add it Friday."],
+ [21.6,2.39,'t',"Done. | Friday at ten, | oven included."],
+ [24.2,.94,'c',"Thank you!"],
+ [25.3,1.81,'t',"Anytime. | Enjoy your guests."],
+];
+const KEY=/^(DONE|THREE|DETAILED|RESTOCKED|TEXTS|FRIDAY|OVEN|AMAZING|ANYTIME|GUESTS|TEN)/;
+const CHUNKS=[];
+for(const [t0,d,who,s] of LINES){const parts=s.split('|').map(x=>x.trim()),tot=parts.reduce((a,p)=>a+p.length+4,0);let a=t0;
+  parts.forEach((p,i)=>{const len=(p.length+4)/tot*d;CHUNKS.push({a,b:i==parts.length-1?t0+d+.25:a+len,who,txt:p.toUpperCase()});a+=len})}
+function caption(g,t,y=1330){const c=CHUNKS.find(c=>t>=c.a&&t<c.b);if(!c)return;const u=t-c.a,s=st(u,.18,.35);
+  const words=c.txt.split(' '),fs=Math.min(104,940/(lay(c.txt,SN(900,100)).w/100));const font=SN(900,fs);
+  g.save();g.translate(CX,y);g.scale(s,s);g.rotate(c.who=='c'?-.02:.0);
+  const L=lay(c.txt,font);let x=-L.w/2;g.font=font;g.textAlign='left';g.lineJoin='round';
+  for(const w of words){const ww=lay(w+' ',font).w,col=KEY.test(w.replace(/[^A-Z]/g,''))?C.tan:(c.who=='c'?C.cream:C.paper);
+    g.strokeStyle=rgb(C.ink,.95);g.lineWidth=fs*.2;g.strokeText(w,x,0);g.fillStyle=rgb(col);g.fillText(w,x,0);x+=ww}
+  T(g,c.who=='t'?'TIDY EDITS':'HOST',SN(700,30),0,-fs*.95,c.who=='t'?C.tan:C.mute,.85);
+  g.restore()}
+
+/* ---------- motif: topographic contour lines, like a floor plan's level lines ---------- */
+function topo(g,t,amt=1,col=C.tan,base=C.ink){fillAll(g,base);g.save();g.lineWidth=2;
+  for(const [cx,cy,sd] of [[220,420,1],[900,1500,2],[760,250,3]])for(let k=1;k<12;k++){g.beginPath();
+    for(let i=0;i<=72;i++){const a=i/72*TAU,r=k*62+noise1(Math.cos(a)*1.4+k*.3+t*.08,sd)*38+noise1(Math.sin(a)*1.4+t*.05,sd+9)*30;g.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r*1.15)}
+    g.closePath();g.strokeStyle=rgb(col,.12*amt*(1-k/14));g.stroke()}g.restore()}
+/* glass card: translucent cream panel with a moving sheen */
+function glass(g,x,y,w,h,t,al=1,r=44){if(al<=0)return;g.save();g.globalAlpha*=al;g.save();g.translate(0,18);g.beginPath();g.roundRect(x,y,w,h,r);g.fillStyle=rgb([0,0,0],.35);g.filter='blur(24px)';g.fill();g.restore();
+  g.beginPath();g.roundRect(x,y,w,h,r);const gr=g.createLinearGradient(x,y,x,y+h);gr.addColorStop(0,rgb(C.cream,.16));gr.addColorStop(1,rgb(C.cream,.06));g.fillStyle=gr;g.fill();
+  g.save();g.clip();const sx=x-w+((t*.25)%1.6)*w*1.6;const sg=g.createLinearGradient(sx,y,sx+w*.5,y+h);sg.addColorStop(0,rgb(C.paper,0));sg.addColorStop(.5,rgb(C.paper,.08));sg.addColorStop(1,rgb(C.paper,0));g.fillStyle=sg;g.fillRect(x,y,w,h);g.restore();
+  g.strokeStyle=rgb(C.cream,.28);g.lineWidth=2;g.beginPath();g.roundRect(x+1,y+1,w-2,h-2,r);g.stroke();g.restore()}
+function avatar(g,cx,cy,r,ringP=0){g.save();g.beginPath();g.arc(cx,cy,r,0,TAU);g.fillStyle=rgb(C.paper);g.fill();g.clip();
+  if(LOGO.width){const s=r*1.75/Math.max(LOGO.width,LOGO.height);g.drawImage(LOGO,cx-LOGO.width*s/2,cy-LOGO.height*s/2-r*.05,LOGO.width*s,LOGO.height*s)}g.restore();
+  if(ringP>0)for(let k=0;k<2;k++){const q=(ringP+k*.5)%1;ring(g,cx,cy,r*(1+q*.9),C.tan,.6*(1-q),3)}}
+function wave(g,cx,cy,w,t,amp,n=34,col=C.tan){g.fillStyle=rgb(col);for(let i=0;i<n;i++){const x=cx-w/2+i*w/(n-1),e=env(t-Math.abs(i-n/2)*.012),h=8+amp*e*120*(.55+.45*Math.abs(noise1(i*.7+t*9,4)));
+  g.beginPath();g.roundRect(x-4,cy-h/2,8,h,4);g.fill()}}
+function pill(g,x,y,w,h,str,on,al=1,fs=34){if(al<=0)return;g.save();g.globalAlpha*=al;g.beginPath();g.roundRect(x,y,w,h,h/2);g.fillStyle=on?rgb(C.tan):rgb(C.cream,.12);g.fill();
+  g.strokeStyle=rgb(on?C.tan:C.cream,.4);g.lineWidth=2;g.stroke();T(g,str,SN(700,fs),x+w/2,y+h/2+fs*.36,on?C.ink:C.cream,1);g.restore()}
+function check(g,cx,cy,p,col=C.tan){if(p<=0)return;g.save();g.beginPath();g.arc(cx,cy,24,0,TAU);g.fillStyle=rgb(col,ex(p));g.fill();
+  drawOn(g,[[cx-10,cy],[cx-3,cy+8],[cx+11,cy-8]],P(p,.3,.7),C.ink,5);g.restore()}
+function header(g,x,y,t,label,timer,al=1){avatar(g,x+52,y+52,30);T(g,'Tidy Edits',SN(700,34),x+100,y+46,C.paper,al,'left');T(g,label,SN(400,26),x+100,y+82,C.mute,al,'left');
+  if(timer!=null)T(g,timer,SN(600,28),x+840,y+60,C.tan,al,'right')}
+const clock=t=>{const s=Math.max(0,Math.floor(t-2.6));return `0:${String(s).padStart(2,'0')}`};
+function cover(g,img,x,y,w,h){if(!img.width)return;const s=Math.max(w/img.width,h/img.height),dw=img.width*s,dh=img.height*s;g.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh)}
+
+/* ---------- 01 HOOK 0–2.6: incoming call slams in, ringing ---------- */
+const s01=(g,t,u)=>{topo(g,t);const e=spr(P(u,0,.6),6,10),sh=Math.sin(u*40)*6*(u<2.2?(Math.sin(u*TAU*.85)>0?1:0):0);
+  g.save();g.translate(sh,(1-e)*-500);glass(g,90,560,900,560,t);
+  avatar(g,CX,720,92,u*.9);T(g,'Tidy Edits',SN(800,62),CX,890,C.paper);T(g,'Greater Boston · incoming call',SN(400,30),CX,940,C.mute);
+  const sp=ex(P(u,1.9,.55));g.beginPath();g.roundRect(150,995,780,96,48);g.fillStyle=rgb(C.cream,.1);g.fill();
+  T(g,'slide to answer',SN(400,30),CX+40,1053,C.mute,1-sp);g.beginPath();g.arc(lp(200,880,sp),1043,40,0,TAU);g.fillStyle=rgb(C.tan);g.fill();
+  T(g,'✆',SN(700,40),lp(200,880,sp),1057,C.ink);g.restore();
+  /* headline slams at frame 0 */
+  const s=st(u,.25,.9);g.save();g.translate(CX,330);g.scale(s,s);g.rotate(-.02);
+  for(const [str,y,col] of [['YOUR CLEANER',0,C.paper],['IS CALLING.',118,C.tan]]){g.font=SN(900,112);g.textAlign='center';g.lineJoin='round';g.strokeStyle=rgb(C.ink);g.lineWidth=22;g.strokeText(str,0,y);g.fillStyle=rgb(col);g.fillText(str,0,y)}
+  g.restore();T(g,'(that never happens. until now.)',SF(400,46,1),CX,1300,C.cream,ex(P(u,.7,.5)))};
+
+/* ---------- 02 CALL LIVE 2.6–8.3: waveform card, captions ---------- */
+const s02=(g,t,u)=>{topo(g,t);const e=ex(P(u,0,.4));g.save();g.translate(0,(1-e)*80);
+  glass(g,90,520,900,420,t);header(g,120,550,t,'on call',clock(t));wave(g,CX,800,720,t,1);
+  /* tiny "guests check in 3:00" chip arrives with the line */
+  const a=ex(P(t,6.6,.4));pill(g,300,990,480,76,'Check-in · 3:00 PM',true,a);g.restore();caption(g,t)};
+
+/* ---------- 03 TURNOVER DONE 8.3–14.0: checklist ticks + photo thumbs ---------- */
+const ROWS=[['Fresh linens',9.0],['Kitchen + bath detailed',10.0],['Everything restocked',11.4],['Photos sent',12.5]];
+const s03=(g,t,u)=>{topo(g,t,1.2);const e=ex(P(u,0,.35));g.save();g.translate((1-e)*900,0);
+  glass(g,90,300,900,830,t);header(g,120,330,t,'turnover · unit 2',clock(t));
+  ROWS.forEach(([s,ts],i)=>{const y=520+i*104,p=P(t,ts,.35),al=.45+.55*ex(p);check(g,190,y-12,p);
+    T(g,s,SN(600,44),240,y,mixc(C.mute,C.paper,ex(p)),al,'left');if(p>.5)drawOn(g,[[240,y+18],[240+lay(s,SN(600,44)).w,y+18]],0,C.tan,0)});
+  /* photo thumbnails land when "photos" is said */
+  ['kitchen','bath','window'].forEach((k,i)=>{const p=spr(P(t,12.6+i*.14,.5),6,9);if(p<=0)return;const x=150+i*270,y=930;
+    g.save();g.translate(x+120,y+80);g.rotate((i-1)*.06);g.scale(p,p);g.beginPath();g.roundRect(-120,-80,240,160,22);g.save();g.clip();
+    g.filter='sepia(.55) saturate(.6) brightness(1.02)';cover(g,IM[k],-120,-80,240,160);g.restore();g.strokeStyle=rgb(C.paper);g.lineWidth=5;g.stroke();g.restore()});
+  g.restore();caption(g,t,1400)};
+
+/* ---------- 04 "ALREADY?" 14.0–15.6: light break, giant reaction ---------- */
+const s04=(g,t,u)=>{fillAll(g,C.cream);topo(g,t,.0,C.brown,C.cream);
+  const w1=ex(P(u,0,.3)),w2=st(u-.75,.22,.8);
+  g.save();g.translate(CX,860);g.rotate(-.04);const f=SN(900,186);g.font=f;g.textAlign='center';
+  g.globalAlpha=w1;g.fillStyle=rgb(C.ink);g.fillText('ALREADY?',lp(-300,0,w1),0);g.restore();
+  if(u>.75){g.save();g.translate(CX,1080);g.scale(w2,w2);T(g,'Amazing.',SF(900,190,1),0,0,C.brown);g.restore()}
+  T(g,'— the host, 6 hours before check-in',SN(500,34),CX,1300,C.deep,ex(P(u,.4,.4)))};
+
+/* ---------- 05 THE OVEN 15.6–21.5: a choice card, host taps "Add Friday" ---------- */
+const s05=(g,t,u)=>{topo(g,t);const e=spr(P(u,0,.5),7,9);g.save();g.translate(CX,800);g.scale(lp(.85,1,e),lp(.85,1,e));g.translate(-CX,-800);
+  glass(g,90,470,900,620,t,ex(P(u,0,.25)));header(g,120,500,t,'quick question',clock(t));
+  T(g,'Oven needs a deep clean.',SN(700,52),160,700,C.paper,1,'left');T(g,'Noticed it during the turnover.',SN(400,34),160,754,C.mute,1,'left');
+  const tap=P(t,20.1,.25),on=t>=20.15;
+  const a1=stg(u,0,.1,.4),a2=stg(u,1,.1,.4);
+  g.save();if(t>20.1&&t<20.45){const s=1-.06*Math.sin(P(t,20.1,.35)*PI);g.translate(330,890);g.scale(s,s);g.translate(-330,-890)}
+  pill(g,140,840,380,100,on?'Add Friday ✓':'Add Friday',on,a1,38);g.restore();pill(g,560,840,380,100,'Skip',false,a2*(on?.35:1),38);
+  /* fingertip */
+  const fp=P(t,19.5,.6);if(fp>0&&t<21.0){const x=lp(700,330,eio(fp)),y=lp(1180,905,eio(fp));g.beginPath();g.arc(x,y,lp(46,36,tap),0,TAU);g.fillStyle=rgb(C.paper,.35*(1-P(t,20.6,.4)));g.fill()}
+  wave(g,CX,1020,560,t,.55,26,C.brown);g.restore();caption(g,t,1360)};
+
+/* ---------- 06 BOOKED 21.5–24.1: calendar notification drops in ---------- */
+const s06=(g,t,u)=>{topo(g,t,1.3);const e=spr(P(u,.05,.6),6,10);
+  g.save();g.translate(0,(1-e)*-420);glass(g,90,540,900,250,t);
+  g.beginPath();g.roundRect(130,585,150,160,26);g.fillStyle=rgb(C.paper);g.fill();T(g,'FRI',SN(800,32),205,632,C.brown);T(g,'10',SN(900,84),205,718,C.ink);
+  T(g,'Turnover clean',SN(700,46),320,640,C.paper,1,'left');T(g,'+ oven deep clean',SN(700,46),320,700,C.tan,1,'left');T(g,'10:00 AM · Unit 2',SN(400,30),320,748,C.mute,1,'left');g.restore();
+  /* second card: confirmation text bubble */
+  const b=ex(P(u,1.0,.4));if(b>0){g.save();g.globalAlpha=b;g.translate(0,(1-b)*40);g.beginPath();g.roundRect(360,850,630,110,40);g.fillStyle=rgb(C.tan);g.fill();
+    T(g,'Booked. See you Friday ✓',SN(700,36),675,918,C.ink);g.restore()}
+  caption(g,t)};
+
+/* ---------- 07 CALL ENDED 24.1–27.4 ---------- */
+const s07=(g,t,u)=>{topo(g,t);const end=t>=27.15;glass(g,90,560,900,380,t);avatar(g,CX,690,70);
+  T(g,end?'Call ended':'Tidy Edits',SN(800,52),CX,830,C.paper);T(g,end?clock(27.1):clock(t),SN(500,34),CX,882,C.tan);
+  wave(g,CX,1010,560,t,.6,26,C.brown);caption(g,t)};
+
+/* ---------- 08 HELLO, WE DO 27.4–33.5: name-tag stickers stack (climax, light) ---------- */
+const TAGS=[['Turnovers',27.6],['Move-outs',28.6],['Offices',29.5],['Listing prep',30.4],['every kind of clean',31.5]];
+function nametag(g,str,cx,cy,rot,s,big){g.save();g.translate(cx,cy);g.rotate(rot);g.scale(s,s);const w=big?860:620,h=big?250:210;
+  g.save();g.translate(10,16);g.beginPath();g.roundRect(-w/2,-h/2,w,h,28);g.fillStyle=rgb(C.deep,.25);g.fill();g.restore();
+  g.beginPath();g.roundRect(-w/2,-h/2,w,h,28);g.fillStyle=rgb(big?C.ink:C.brown);g.fill();
+  T(g,'HELLO · WE DO',SN(800,30),0,-h/2+48,big?C.tan:C.cream);g.beginPath();g.roundRect(-w/2+24,-h/2+70,w-48,h-94,18);g.fillStyle=rgb(C.paper);g.fill();
+  T(g,str,SF(big?900:700,big?78:72,big),0,-h/2+70+(h-94)/2+26,C.ink);g.restore()}
+const s08=(g,t,u)=>{fillAll(g,C.paper);topo(g,t,.0,C.tan,C.paper);
+  TAGS.forEach(([s,ts],i)=>{const p=t-ts;if(p<0)return;const r=rng(i+3),big=i==4;
+    const sc=big?lp(1.6,1,ex(P(p,0,.3))):lp(1.5,1,ex(P(p,0,.25)));const y=big?1220:360+i*190,x=CX+(big?0:(r()-.5)*160),rot=big?-.03:(r()-.5)*.14;
+    nametag(g,s,x,y,rot,sc,big)});
+  T(g,'all over Greater Boston',SF(400,46,1),CX,1460,C.deep,ex(P(t,32.4,.5)))};
+
+/* ---------- 09 END 33.5–37: logo, number, CTA ---------- */
+const s09=(g,t,u)=>{fillAll(g,C.cream);const e=ex(P(u,0,.5));
+  if(LOGO.width){const s=560/LOGO.width*lp(.9,1,e);g.save();g.globalAlpha=e;g.globalCompositeOperation='multiply';g.drawImage(LOGO,CX-LOGO.width*s/2,620-LOGO.height*s/2,LOGO.width*s,LOGO.height*s);g.restore()}
+  const a=ex(P(u,.25,.5));g.save();g.translate(0,(1-a)*30);T(g,'Text us for a free quote',SF(700,58),CX,1000,C.ink,a);
+  g.beginPath();g.roundRect(190,1050,700,110,55);g.fillStyle=rgb(C.ink,a);g.fill();T(g,'857-753-5593',SN(800,54),CX,1124,C.cream,a);g.restore();
+  T(g,'tidyedits.com · all types of cleaning, big or small',SN(500,32),CX,1230,C.deep,ex(P(u,.6,.5)));
+  T(g,'Residential + commercial · Greater Boston',SN(400,30),CX,1280,C.brown,ex(P(u,.8,.5)))};
+
+K.start({duration:37,hud:{show:false,title:''},fade:{in:0,out:.4},
+  shots:[[0,2.6,s01,{label:'01 hook',bloom:.4}],[2.6,8.3,s02,{label:'02 call',bloom:.35}],[8.3,14.0,s03,{label:'03 checklist',bloom:.35}],
+    [14.0,15.6,s04,{label:'04 already',bloom:.08}],[15.6,21.5,s05,{label:'05 oven',bloom:.35}],[21.5,24.1,s06,{label:'06 booked',bloom:.35}],
+    [24.1,27.4,s07,{label:'07 ended',bloom:.35}],[27.4,33.5,s08,{label:'08 we do',bloom:.08}],[33.5,37.01,s09,{label:'09 end',bloom:.08}]],
+  hits:[[0,1.2,14],[2.6,.8,0],[8.3,.8,0],[14.0,1.2,10],[14.75,.6,0],[15.6,.8,0],[20.1,.5,0],[21.5,.8,0],[24.1,.6,0],[27.4,1,0],[27.6,.5,0],[28.6,.5,0],[29.5,.5,0],[30.4,.5,0],[31.5,1.3,16],[33.5,1,0]]});
+window.ready=Promise.all([window.ready,...LOADS]).then(()=>{window.renderAt(0);return window.KINFO});
+</script></body></html>
