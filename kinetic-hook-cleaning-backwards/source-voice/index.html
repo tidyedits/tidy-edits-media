@@ -1,0 +1,140 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0}html,body{overflow:hidden;background:#000}canvas{display:block}
+@font-face{font-family:PF;font-weight:900;font-style:normal;src:url(fonts/pf-latin-900-normal.woff2)}
+@font-face{font-family:PF;font-weight:700;font-style:normal;src:url(fonts/pf-latin-700-normal.woff2)}
+@font-face{font-family:PF;font-weight:400;font-style:italic;src:url(fonts/pf-latin-400-italic.woff2)}
+@font-face{font-family:PF;font-weight:700;font-style:italic;src:url(fonts/pf-latin-700-italic.woff2)}
+@font-face{font-family:PF;font-weight:900;font-style:italic;src:url(fonts/pf-latin-900-italic.woff2)}
+</style></head><body><canvas id="out"></canvas>
+<script>window.KCONF={W:1080,H:1920,FPS:60,SAMPLES:8,
+  palette:{ink:[17,19,18],paper:[246,243,236],accent:[138,106,74],accentHi:[184,154,116],warm:[231,220,203],deep:[92,68,48],shade:[58,46,36],mute:[176,160,140],gray:[110,98,86],cool:[200,190,175]},
+  fonts:{serif:'PF',sans:'Inter',mono:'"DejaVu Sans Mono"'},
+  caBase:0, caHit:4, flash:.16, punch:.035, vignette:.22};</script>
+<script src="engine.js"></script>
+<script src="logo_data.js"></script>
+<script>
+/* Tidy Edits — "You're cleaning backwards". Pure function of t/u. Safe zone for text: y 180–1480. */
+const C={ink:[17,19,18],paper:[246,243,236],cream:[231,220,203],tan:[184,154,116],brown:[138,106,74],deep:[92,68,48]};
+const DUSTY=mixc(C.cream,C.tan,.32);
+const SF=(w,s,it)=>`${it?'italic ':''}${w} ${Math.round(s)}px PF`;
+const SN=(w,s)=>`${w} ${Math.round(s)}px Inter`;
+const fitF=(str,w,maxW,maxS,it)=>Math.min(maxS,maxW/(lay(str,SF(w,100,it)).w/100));
+const LOGO=new Image();LOGO.src=LOGO_SRC;
+const IM={},LOADS=[new Promise(r=>{LOGO.onload=r;LOGO.onerror=r})];
+for(const k of ['hook','duster','broom','mop','spray','bath','kitchen','sink','window','squeegee']){const i=new Image();LOADS.push(new Promise(r=>{i.onload=r;i.onerror=r}));i.src='photos/'+k+'.jpg';IM[k]=i}
+
+/* ---------- parts ---------- */
+function cover(g,img,x,y,w,h,px=0,py=0,z=1){if(!img.width)return;const s=Math.max(w/img.width,h/img.height)*z,dw=img.width*s,dh=img.height*s;
+  g.drawImage(img,x+(w-dw)/2+px*(dw-w)/2,y+(h-dh)/2+py*(dh-h)/2,dw,dh)}
+function tornPath(g,x,y,w,h,seed,j=14){const r=rng(seed),n=Math.ceil(w/26),m=Math.ceil(h/26);g.beginPath();
+  for(let i=0;i<=n;i++)g.lineTo(x+w*i/n,y+(r()-.5)*j);for(let i=0;i<=m;i++)g.lineTo(x+w+(r()-.5)*j,y+h*i/m);
+  for(let i=n;i>=0;i--)g.lineTo(x+w*i/n,y+h+(r()-.5)*j);for(let i=m;i>=0;i--)g.lineTo(x+(r()-.5)*j,y+h*i/m);g.closePath()}
+/* photo on a torn paper card, centred at cx,cy, rotated */
+function card(g,img,cx,cy,w,h,rot,seed,o={}){g.save();g.translate(cx,cy);g.rotate(rot);const b=o.border??22;
+  g.save();g.translate(14,22);tornPath(g,-w/2-b,-h/2-b,w+2*b,h+2*b,seed);g.fillStyle=rgb(C.deep,.28);g.fill();g.restore();
+  tornPath(g,-w/2-b,-h/2-b,w+2*b,h+2*b,seed);g.fillStyle=rgb(C.paper);g.fill();
+  g.save();g.beginPath();g.rect(-w/2,-h/2,w,h);g.clip();cover(g,img,-w/2,-h/2,w,h,o.px||0,o.py||0,o.z||1);if(o.inner)o.inner(g,w,h);g.restore();g.restore()}
+function plane(g,cx,cy,rot,sk=0,s=1){g.translate(cx,cy);g.rotate(rot);g.transform(1,0,sk,1,0,0);g.scale(s,s);g.translate(-cx,-cy)}
+function sprockets(g,x,t,sp,col=C.ink,hole=C.cream){g.fillStyle=rgb(col);g.fillRect(x-40,-200,80,H+400);const gap=96,off=((t*sp)%gap+gap)%gap;
+  g.fillStyle=rgb(hole,.9);for(let y=-gap+off;y<H+gap;y+=gap){g.beginPath();g.roundRect(x-17,y,34,46,9);g.fill()}}
+function leak(g,t,amt,x=W*.85,y=H*.15){if(amt<=0)return;const gx=x+noise1(t*.35,5)*160,gy=y+noise1(t*.3,6)*220,r=W*.9;
+  const gr=g.createRadialGradient(gx,gy,0,gx,gy,r);gr.addColorStop(0,`rgba(225,180,130,${.22*amt})`);gr.addColorStop(1,'rgba(225,180,130,0)');
+  g.save();g.globalCompositeOperation='lighter';g.fillStyle=gr;g.fillRect(-200,-200,W+400,H+400);g.restore()}
+const DUST=(()=>{const r=rng(3);return Array.from({length:90},()=>({x:r(),p:r(),s:1.5+r()*4.5,v:.5+r(),a:.25+r()*.5}))})();
+function dustFall(g,u,amt,col=C.deep,y0=0,y1=H){if(amt<=0)return;for(const d of DUST){const span=y1-y0,y=y0+((d.p*span+u*d.v*span*.45)%span),x=d.x*W+noise1(u*.8+d.p*9,2)*40;
+  g.fillStyle=rgb(col,d.a*amt);g.beginPath();g.arc(x,y,d.s,0,TAU);g.fill()}}
+const BUB=(()=>{const r=rng(14);return Array.from({length:14},()=>({x:r(),ph:r(),r:8+r()*24,sp:.5+r()*.8}))})();
+function bubbles(g,t,amt,col=C.brown){if(amt<=0)return;for(const b of BUB){const y=H+60-((t*b.sp*H*.07+b.ph*H*1.3)%(H*1.3)),x=b.x*W+Math.sin(t*1.2+b.ph*9)*28;ring(g,x,y,b.r,col,.45*amt,2.2)}}
+function scrib(g,pts,p,col,lw){const q=pts.map(([x,y],i)=>[x+noise1(i*.4,7)*6,y+noise1(i*.4,8)*6]);return drawOn(g,q,p,col,lw)}
+const line=(x0,y0,x1,y1,n=30)=>Array.from({length:n+1},(_,i)=>[lp(x0,x1,i/n),lp(y0,y1,i/n)]);
+function tag(g,str,cx,cy,rot,seed,fs=46,col=C.ink,bg=C.paper,al=1){if(al<=0)return;g.save();g.globalAlpha*=al;g.translate(cx,cy);g.rotate(rot);const w=lay(str,SN(400,fs)).w+70,h=fs*1.9;
+  tornPath(g,-w/2,-h/2,w,h,seed,9);g.fillStyle=rgb(bg);g.fill();T(g,str,SN(400,fs),0,fs*.36,col,1);g.restore()}
+
+/* ---------- 01  HOOK: STOP. (glove wiping glass enters, scribbled X) ---------- */
+const s01=(g,t,u)=>{fillAll(g,C.ink);leak(g,t,.6);
+  const e=ex(P(u,0,.5)),cx=CX+(1-e)*420,rot=lp(.09,-.035,e)+noise1(u*.7,1)*.006;
+  card(g,IM.hook,cx,960,960,860,rot,11,{px:-.35+Math.sin(u*5)*.25,z:1.18-.08*e,inner:(c,w,h)=>{
+    const sp=P(u,.42,.22),sp2=P(u,.6,.22);
+    scrib(c,line(-w*.32,-h*.3,w*.32,h*.3),sp,C.ink,26);scrib(c,line(w*.32,-h*.3,-w*.32,h*.3),sp2,C.ink,26)}});
+  const s=st(u,.3,.55);g.save();g.translate(CX,390);g.rotate(-.03);g.scale(s,s);T(g,'STOP.',SF(900,fitF('STOP.',900,W*.86,380)),0,0,C.paper,1);g.restore();
+  const a=ex(P(u,.55,.35));if(a>0){g.save();g.translate(0,(1-a)*40);T(g,'wiping glass like this?',SN(300,62),CX,1490,C.cream,a);g.restore()}};
+
+/* ---------- 02  you're cleaning it BACKWARDS (mirror flip) ---------- */
+const s02=(g,t,u)=>{fillAll(g,C.paper);g.save();plane(g,CX,CY,-.045,.03,1+.03*u);
+  const th="you're cleaning it";word(g,th,SN(200,78),CX,560,C.deep,j=>{const a=stg(u,j,.018,.3);return{al:a,dy:(1-a)*40}});
+  ['BACK','WARDS'].forEach((w,i)=>{const fs=fitF(w,900,W*1.04,420),p=ex(P(u,.32+i*.14,.55)),sx=Math.cos(PI*(1-p));
+    g.save();g.translate(CX,900+i*350);g.scale(sx,1);T(g,w,SF(900,fs),0,0,p<.5?C.tan:C.ink,1);g.restore()});
+  const lp2=eio(P(u,1.05,.4));if(lp2>0)drawOn(g,line(W*.08,1290,W*.92,1300),lp2,C.brown,10);
+  g.restore();dustFall(g,u,.5)};
+
+/* ---------- 03  3 pro fixes (film strip, mask rise) ---------- */
+const s03=(g,t,u)=>{fillAll(g,C.ink);sprockets(g,46,t,240,C.shade||[40,34,28],C.deep);sprockets(g,W-46,t,-240,[40,34,28],C.deep);
+  const fs=980,p=ex(P(u,0,.4));g.save();g.beginPath();g.rect(0,260,W,920);g.clip();T(g,'3',SF(900,fs),CX,1150+(1-p)*900,C.tan,1);g.restore();
+  const a=ex(P(u,.2,.35));tracked(g,'PRO FIXES',SN(300,72),CX,1340,lp(40,16,a),C.paper,a);
+  g.letterSpacing='0px';T(g,'10 years of cleaning in 20 seconds',SN(300,40),CX,1430,C.mute||C.tan,ex(P(u,.35,.3)))};
+
+/* ---------- 04  TOP → DOWN (duster, falling dust, arrow) ---------- */
+const s04=(g,t,u)=>{fillAll(g,C.cream);g.save();plane(g,CX,CY,.03,-.02,1.02+.02*u);
+  T(g,'01',SN(300,46),110,210,C.brown,ex(P(u,0,.3)),'left');
+  word(g,'TOP',SF(900,300),CX,480,C.ink,j=>{const a=stg(u-.6,j,.07,.45,spr);return{al:a>0?1:0,dy:(1-a)*-260}});
+  card(g,IM.duster,CX,820,900,560,-.025,23,{px:.2-.15*u/3.2,z:1.1});
+  const ap=eio(P(u,1.0,.4));if(ap>0){const tip=drawOn(g,line(CX,1130,CX,1290),ap,C.brown,12);if(ap>.98){g.strokeStyle=rgb(C.brown);g.lineWidth=12;g.beginPath();g.moveTo(CX-40,1250);g.lineTo(CX,1295);g.lineTo(CX+40,1250);g.stroke()}}
+  if(u>=1.25){const s=st(u-1.25,.28,.9);g.save();g.translate(CX,1450);g.scale(s,s);T(g,'DOWN.',SF(900,230,true),0,0,C.ink,1);g.restore()}
+  g.restore();dustFall(g,u,.8,C.deep,0,H);
+  tag(g,'dust falls. clean high first.',CX,1560,.02,31,44,C.ink,C.paper,ex(P(u,1.75,.35)))};
+
+/* ---------- 05  DRY → WET (broom over mop, torn seam) ---------- */
+const s05=(g,t,u)=>{fillAll(g,C.ink);g.save();plane(g,CX,CY,-.02,.015,1.03);
+  T(g,'02',SN(300,46),110,210,C.cream,ex(P(u,0,.3)),'left');
+  g.save();tornPath(g,-60,140,W+120,700,41,18);g.clip();cover(g,IM.broom,-60,140,W+120,700,0,.2-.2*u/3.2,1.05);g.restore();
+  const s1=st(u-.85,.28,.9);if(u>=.85){g.save();g.translate(CX,640);g.scale(s1,s1);g.lineWidth=14;g.strokeStyle=rgb(C.ink,.6);g.font=SF(900,300);g.textAlign='center';g.strokeText('DRY',0,0);T(g,'DRY',SF(900,300),0,0,C.paper,1);g.restore()}
+  const w=ex(P(u,1.1,.45));if(w>0){g.save();g.beginPath();g.rect(-60,860,(W+120)*w,700);g.clip();tornPath(g,-60,860,W+120,660,43,18);g.clip();cover(g,IM.mop,-60,860,W+120,660,0,-.1+.2*u/3.2,1.05);g.restore()}
+  if(u>=1.5){const s2=st(u-1.5,.28,.9);g.save();g.translate(CX,1330);g.scale(s2,s2);g.lineWidth=14;g.strokeStyle=rgb(C.ink,.6);g.font=SF(900,300);g.textAlign='center';g.strokeText('WET',0,0);T(g,'WET',SF(900,300),0,0,C.paper,1);g.restore()}
+  g.restore();
+  tag(g,"sweep first. or you're mopping mud.",CX,850,-.025,47,44,C.ink,C.paper,ex(P(u,2.05,.35)))};
+
+/* ---------- 06  Spray the CLOTH, not the glass (mist, strike) ---------- */
+const MIST=(()=>{const r=rng(61);return Array.from({length:120},()=>({a:(r()-.5)*.7,v:.4+r()*.9,ph:r(),s:1+r()*4}))})();
+const s06=(g,t,u)=>{fillAll(g,C.ink);g.save();plane(g,CX,CY,.02,-.025,1.02+.025*u);
+  cover(g,IM.spray,-40,520,W+80,1560,0,0,1.04);
+  const gr=g.createLinearGradient(0,500,0,900);gr.addColorStop(0,rgb(C.ink,1));gr.addColorStop(1,rgb(C.ink,0));g.fillStyle=gr;g.fillRect(-100,480,W+200,440);
+  const nx=230,ny=840,mp=P(u,.5,2.2);if(mp>0)for(const m of MIST){const k=((mp*1.6+m.ph)%1),d=k*520*m.v;g.fillStyle=rgb(C.cream,(1-k)*.6);g.beginPath();g.arc(nx+Math.cos(m.a-.25)*d,ny+Math.sin(m.a-.25)*d,m.s*(1+k*2),0,TAU);g.fill()}
+  T(g,'spray the',SN(200,86),CX,230,C.cream,ex(P(u,.6,.3)));
+  word(g,'CLOTH',SF(900,fitF('CLOTH',900,W*.82,320)),CX,540,C.paper,j=>{const a=stg(u-.85,j,.05,.4);return{al:a>0?1:0,sy:lp(.2,1,spr(a)),dy:(1-a)*30}});
+  const a3=ex(P(u,1.65,.35));T(g,'not the glass.',SF(700,118,true),CX,700,C.tan,a3);
+  const sp=eio(P(u,2.0,.35));if(sp>0){const L=lay('not the glass.',SF(700,118,true)),x0=CX-L.w/2,gl=L.gl.find(q=>q.ch==='g');drawOn(g,line(x0+gl.x-10,668,x0+L.w+10,660),sp,C.paper,12)}
+  g.restore();};
+
+/* ---------- 07  CLIMAX strobe: after photos, one word each ---------- */
+const AFTER=[[0,'window','No drips.'],[.5,'kitchen','Spotless.'],[.9,'sink','No streaks.'],[1.45,'bath','Done right.']];
+const s07=(g,t,u)=>{let k=0;for(let i=0;i<4;i++)if(u>=AFTER[i][0])k=i;const v=u-AFTER[k][0],[,im,wd]=AFTER[k];fillAll(g,C.ink);
+  g.save();plane(g,CX,CY,(k%2?1:-1)*.03,0,1.08-.06*ex(P(v,0,.4)));cover(g,IM[im],-80,-80,W+160,H+160,(k%2?.4:-.4),0,1);g.restore();
+  g.fillStyle=rgb(C.ink,.38);g.fillRect(0,0,W,H);sprockets(g,40,t,600,C.ink,C.deep);sprockets(g,W-40,t,600,C.ink,C.deep);
+  const s=st(v,.22,1.1);g.save();g.translate(CX,1000);g.rotate((k%2?1:-1)*-.04);g.scale(s,s);T(g,wd,SF(900,fitF(wd,900,W*.84,230,true),true),0,0,C.paper,1);g.restore()};
+
+/* ---------- 08  Logo peel reveal ---------- */
+const s08=(g,t,u)=>{fillAll(g,C.paper);leak(g,t,.35,W*.2,H*.8);bubbles(g,t,.7);g.save();plane(g,CX,CY,.015-.02*u/2,0,1+.035*u);const lw=W*.74,lh=lw*LOGO.height/LOGO.width,ly=760,br=1+.01*Math.sin(u*2.2);
+  g.save();g.translate(CX,ly);g.scale(br,br);g.drawImage(LOGO,-lw/2,-lh/2,lw,lh);g.restore();
+  const pe=ei(P(u,1.05,.55));if(pe<1){g.save();g.translate(CX+pe*900,ly-pe*700);g.rotate(-.06-pe*.5);tornPath(g,-lw/2-60,-lh/2-50,lw+120,lh+100,81,16);g.fillStyle=rgb(C.tan);g.fill();
+    T(g,'short on',SF(700,112,true),0,-20,C.paper,1);T(g,'time?',SF(700,112,true),0,110,C.paper,1);g.restore()}
+  g.letterSpacing='0px';T(g,typed('detail-obsessed cleaning',P(u,1.5,.5)),SN(300,58),CX-lay('detail-obsessed cleaning',SN(300,58)).w/2,1230,C.ink,1,'left');
+  tracked(g,'GREATER BOSTON',SN(600,40),CX,1320,lp(30,12,ex(P(u,1.9,.4))),C.brown,ex(P(u,1.9,.4)));g.restore();dustFall(g,u*.5,.3);
+  const sw=P(u,2.0,.4);if(sw>0&&sw<1){g.save();g.globalCompositeOperation='lighter';const x=lp(-200,W+200,eio(sw));const gr=g.createLinearGradient(x-120,0,x+120,0);gr.addColorStop(0,'rgba(220,190,150,0)');gr.addColorStop(.5,'rgba(220,190,150,.28)');gr.addColorStop(1,'rgba(220,190,150,0)');g.fillStyle=gr;g.fillRect(0,500,W,560);g.restore()}};
+
+/* ---------- 09  Freeze poster: Which one do you skip? ---------- */
+const s09=(g,t,u)=>{fillAll(g,C.cream);leak(g,t,.4,W*.1,H*.2);g.save();plane(g,CX,CY,0,0,1+.012*u);
+  const e=spr(P(u,0,.6),6,7);card(g,IM.bath,CX,560,880,600,lp(.12,-.025,e),91,{z:1.06-.03*u/2.8});
+  ['Which one','do you skip?'].forEach((s,i)=>{g.save();g.beginPath();g.rect(0,1100+i*150-125,W,160);g.clip();const p=ex(P(u,1.0+i*.14,.5));T(g,s,SF(900,128,i===1),CX,1100+i*150+(1-p)*170,C.ink,1);g.restore()});
+  T(g,'comment 1, 2 or 3',SN(300,56),CX,1390,C.brown,ex(P(u,1.6,.4)));
+  const la=ex(P(u,1.8,.5)),lw=250,lh=lw*LOGO.height/LOGO.width;g.globalAlpha=la;g.drawImage(LOGO,CX-lw/2,1440,lw,lh);g.globalAlpha=1;
+  g.restore();dustFall(g,u*.4,.35)};
+
+const SHOTS=[[0,.9,s01,{label:'01 HOOK',bloom:.1}],[.9,2.15,s02,{label:'02 BACKWARDS',bloom:.07}],[2.15,3.7,s03,{label:'03 3 FIXES',bloom:.3}],
+  [3.7,7.6,s04,{label:'04 TOP DOWN',bloom:.07}],[7.6,11.85,s05,{label:'05 DRY WET',bloom:.1}],[11.85,14.5,s06,{label:'06 CLOTH',bloom:.15}],
+  [14.5,16.4,s07,{label:'07 AFTER',bloom:.15}],[16.4,18.8,s08,{label:'08 LOGO',bloom:.07}],[18.8,22.01,s09,{label:'09 POSTER',bloom:.07}]];
+const HITS=[[0,.9,18],[.45,.5,0],[.9,1,0],[1.3,.5,0],[2.15,1.2,10],[3.7,1,0],[4.95,.6,6],[7.6,1,0],[8.45,.6,0],[9.1,.6,6],[11.85,1,0],[12.7,.5,0],[13.85,.5,0],
+  [14.5,1.4,22],[15.0,.7,8],[15.4,.7,8],[15.95,.7,8],[16.4,1,0],[17.45,.5,0],[18.8,1,0],[19.85,.5,0]];
+K.start({duration:22,hud:{show:false},fade:{in:0,out:.5},shots:SHOTS,hits:HITS,
+  fonts:['900 40px PF','700 40px PF','italic 700 40px PF','italic 900 40px PF','300 40px Inter','200 40px Inter','600 40px Inter']});
+window.ready=Promise.all([window.ready,...LOADS]).then(([i])=>(window.renderAt(0),i));
+</script></body></html>
